@@ -27,6 +27,10 @@ function save_pref( $prefs, $src) {
       $prefix = 'pref_';
     }
     //echo "Setting = $setting, key = $key, prefix = $prefix<br>\n";
+    // Never store a preference that would override an admin-only system
+    // setting (also neutralized at read time in load_user_preferences).
+    if ( is_system_only_setting ( strtoupper ( $setting ) ) )
+      continue;
     if ( strlen ( $setting ) > 0 && $prefix == 'pref_' ) {
       $sql = 'DELETE FROM webcal_user_pref WHERE cal_login = ? ' .
         'AND cal_setting = ?';
@@ -51,6 +55,14 @@ $message = '';
 // Handle "Reset Preferences" button
 $action = getValue('action');
 if ($action == "reset" && empty($error)) {
+  // This reset is a GET link, so it is not covered by the POST CSRF check in
+  // preventHacking(); verify the token explicitly (the link carries it).
+  if ( ( empty($CSRF_PROTECTION) || $CSRF_PROTECTION != 'N' )
+      && ( empty($_REQUEST['csrf_form_key'])
+        || empty($_SESSION['csrf_form_key'])
+        || $_REQUEST['csrf_form_key'] !== $_SESSION['csrf_form_key'] ) )
+    die_miserable_death ( translate('Fatal Error') . ': '
+      . translate('Invalid form request') );
   $user = getValue('user');
   if ($user != $login && ! $is_admin) {
     // Make sure this person is either an admin or the owner/admin of the nonuser cal.
@@ -74,13 +86,23 @@ if ( $is_admin && ! empty ( $public ) && $PUBLIC_ACCESS == 'Y' ) {
   $updating_public = true;
   load_user_preferences ( '__public__' );
   $prefuser = '__public__';
-} elseif ( ! empty ( $user ) && $user != $login && ($is_admin || $is_nonuser_admin)) {
-  $prefuser = $user;
-    load_user_preferences ( $user );
 } else {
-  $prefuser = $login;
-  // Reload preferences so any css changes will take effect
-  load_user_preferences();
+  // Resolve the target once and authorize against that exact account. The
+  // nonuser-admin check is bound to the requested $user, not the init-set
+  // global $is_nonuser_admin (which was derived from a POST-preferred
+  // 'user'), so the authorization subject == the write subject.
+  $prefuser = pref_resolve_target ( $user, $login, $is_admin,
+    ( ! empty ( $user ) && user_is_nonuser_admin ( $login, $user ) ) );
+  if ( $prefuser === false )
+    die_miserable_death ( translate ( 'Not authorized' ) );
+  // Keep the flag consistent with the resolved target for the display logic
+  // further down (it previously trusted the same POST-derived global).
+  $is_nonuser_admin = ( $prefuser != $login
+    && user_is_nonuser_admin ( $login, $prefuser ) );
+  if ( $prefuser == $login )
+    load_user_preferences();
+  else
+    load_user_preferences ( $prefuser );
 }
 
 if ( ! empty ( $_POST ) && empty ( $error )) {
@@ -226,17 +248,17 @@ $formaction = preg_replace('/action=reset/', 'action=save', $formaction);
 <?php
 print_form_key();
 if ($user)
-  echo "<input type=\"hidden\" name=\"user\" value=\"$user\">\n";
+  echo "<input type=\"hidden\" name=\"user\" value=\"" . htmlspecialchars($user) . "\">\n";
 
 echo display_admin_link();
 $resetConfirm = translate('Are you sure you want to reset preferences for XXX?');
-$resetConfirm = str_replace("XXX", $user, $resetConfirm);
+$resetConfirm = str_replace("XXX", htmlspecialchars($user, ENT_QUOTES), $resetConfirm);
 ?>
 <div class="form-row">
   <button class="btn btn-primary mr-2" name="" type="submit"><?php
 etranslate ( 'Save Preferences' )?></button>
 <input type="hidden" name="action" value="save">
-<a class="btn btn-secondary mr-2" href="pref.php?action=reset&user=<?php echo $user;?>&csrf_form_key=<?php echo getFormKey();?>"
+<a class="btn btn-secondary mr-2" href="pref.php?action=reset&user=<?php echo urlencode($user);?>&csrf_form_key=<?php echo getFormKey();?>"
   onclick="return confirm('<?php echo $resetConfirm;?>')"><?php etranslate("Reset Preferences");?></a>
 
 <?php if ( $updating_public ) { ?>
@@ -794,10 +816,10 @@ if ( $PUBLISH_ENABLED == 'Y' ) { ?>
   <td>
   <?php
     echo htmlspecialchars ( getServerUrl() ) .
-      'publish.php/' . ( $updating_public ? '__public__' : $user ) . '.ics';
+      'publish.php/' . ( $updating_public ? '__public__' : htmlspecialchars ( $user ) ) . '.ics';
     echo "<br>\n";
     echo htmlspecialchars ( getServerUrl() ) .
-      'publish.php?user=' . ( $updating_public ? '__public__' : $user );
+      'publish.php?user=' . ( $updating_public ? '__public__' : htmlspecialchars ( $user ) );
   ?></td></tr>
   <tr><td style="block-size: 0.5em"><!-- small vertical spacing --><span style="font-size: 25%">&nbsp;</span></td></tr>
 
@@ -829,7 +851,7 @@ if ( $RSS_ENABLED == 'Y' ) { ?>
   <td>
   <?php
     echo htmlspecialchars ( getServerUrl() ) .
-      'rss.php?user=' . ( $updating_public ? '__public__' : $user );
+      'rss.php?user=' . ( $updating_public ? '__public__' : htmlspecialchars ( $user ) );
   ?></td></tr>
   <tr><td style="block-size: 0.5em"><!-- small vertical spacing --><span style="font-size: 25%">&nbsp;</span></td></tr>
 <?php
@@ -845,10 +867,10 @@ if ( $RSS_ENABLED == 'Y' ) { ?>
   <td>
   <?php
     echo htmlspecialchars ( getServerUrl() ) .
-      'freebusy.php/' . ( $updating_public ? '__public__' : $user ) . '.ifb';
+      'freebusy.php/' . ( $updating_public ? '__public__' : htmlspecialchars ( $user ) ) . '.ifb';
     echo "<br>\n";
     echo htmlspecialchars ( getServerUrl() ) .
-      'freebusy.php?user=' . ( $updating_public ? '__public__' : $user );
+      'freebusy.php?user=' . ( $updating_public ? '__public__' : htmlspecialchars ( $user ) );
   ?></td></tr>
   <tr><td style="block-size: 0.5em"><!-- small vertical spacing --><span style="font-size: 25%">&nbsp;</span></td></tr>
 </table>

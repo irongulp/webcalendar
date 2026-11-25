@@ -74,8 +74,7 @@ cached views and open drafts. If access is removed, the app asks for a new selec
 instead of silently switching writes to the personal calendar. Older servers that
 return 404 for calendar discovery retain personal-calendar access.
 
-No new migration is required. Deploy the updated API before the updated client;
-clear/rebuild compiled route caches when deploying the new routes.
+No new migration is required. Deploy the updated API before the updated client.
 
 ## Installation
 
@@ -140,9 +139,10 @@ php bin/api.php route:clear
 ```
 
 Run the API command as the PHP web-server user with the same private environment
-configuration. If the deployment uses a compiled route cache, rebuild it after
-clearing it: the routing fix changes generated matchers. Follow the host's normal
-PHP worker/OPcache reload procedure when deploying dependency updates. CI also
+configuration. The API loads routes directly from source. Do not run Laravel's
+stock `route:cache`: it expects a standalone Laravel `bootstrap/app.php` that
+this embedded application does not provide. Follow the host's normal PHP
+worker/OPcache reload procedure when deploying dependency updates. CI also
 audits development dependencies; do not suppress the advisory gate.
 
 Regression tests cover HEAD authentication/read abilities, malformed script-name
@@ -250,8 +250,8 @@ files with malformed syntax, fail startup without returning their contents.
 PHP filesystem restrictions such as `open_basedir` must permit the private
 directory for file-based configuration; server-only configuration does not
 require access to that optional directory. A deployment with a private configuration
-file still requires Composer dependencies. Do not run Laravel's configuration
-or route cache commands: the API adapts the current WebCalendar configuration
+file still requires Composer dependencies. Do not create Laravel configuration
+or route caches: the API adapts the current WebCalendar configuration
 on startup.
 
 Database-password and LDAP-password authentication are supported. HTTP-auth,
@@ -388,9 +388,8 @@ the database. Legacy tokens expire after 30 days and require password sign-in ag
 
 ### Renewable device sessions
 
-Deploy the code, install Composer dependencies, run `php bin/api.php migrate --force`
-as the web-server user, and clear/rebuild compiled route caches using the installation
-commands above before updating clients. The additional migration adds nullable
+Deploy the code, install Composer dependencies, and run `php bin/api.php migrate --force`
+as the web-server user before updating clients. The additional migration adds nullable
 session metadata to `webcal_api_tokens`; legacy tokens remain valid. MySQL/MariaDB
 requires both API tables to use InnoDB for atomic rotation and revocation.
 
@@ -636,8 +635,8 @@ The next cursor is present only when more authorized matching records exist.
 Query selectors `user`, `username` and `calendar` are prohibited; select via the
 route. Undelegated, disabled or time-only calendars return 403. Standard API
 validation (422), authentication (401) and rate-limit (429/Retry-After) rules apply.
-Search requires no new migration. Deploy these source files (included in
-`release-files`) and clear/rebuild route caches. Older servers return 404; the iOS
+Search requires no new migration. Deploy the updated source files (included in
+`release-files`). Older servers return 404; the iOS
 app explains that a server update is needed and retains the session.
 
 ### Create an event

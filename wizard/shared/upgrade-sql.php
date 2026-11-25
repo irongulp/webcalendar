@@ -724,4 +724,20 @@ SQL
     'version' => 'v1.9.25',
     'default-sql' => ''
   ],
+  [
+    'version' => 'v1.9.26',
+    'default-sql' => ''
+  ],
+  [
+    'version' => 'v1.9.27',
+    'default-sql' => ''
+  ],
+  [
+    'version' => 'v1.9.28',
+    'default-sql' => ''
+  ],
+  [
+    'version' => 'v1.9.29',
+    'default-sql' => ''
+  ],
 ];

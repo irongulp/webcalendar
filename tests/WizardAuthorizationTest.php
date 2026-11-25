@@ -47,7 +47,7 @@ $_SERVER['REQUEST_METHOD'] = $request['post'] ? 'POST' : 'GET';
 $_POST = $request['post'];
 $_GET = $request['get'];
 register_shutdown_function(static function () {
-  fwrite(STDERR, 'STATUS:' . (http_response_code() ?: 200));
+  fwrite(STDERR, 'STATUS:' . (http_response_code() ?: 200) . "\nSESSION:" . session_id());
 });
 require __DIR__ . '/wizard/index.php';
 PHP
@@ -107,6 +107,21 @@ PHP
     self::assertTrue($this->request($mode, [
       'action' => 'login', 'password' => 'Original-password',
     ])['json']['success']);
+  }
+
+  /** @dataProvider configurations */
+  public function testConfiguredLoginRotatesTheSessionAndInvalidatesThePreviousId(string $mode): void
+  {
+    $this->request($mode, [], ['ajax' => 'state']);
+    $anonymousId = $this->sessionId;
+    self::assertTrue($this->request($mode, [
+      'action' => 'login', 'password' => 'Original-password',
+    ])['json']['success']);
+    $authenticatedId = $this->sessionId;
+    self::assertNotSame($anonymousId, $authenticatedId);
+    self::assertTrue($this->request($mode, [], ['ajax' => 'state'])['json']['state']['isValidUser']);
+    $this->sessionId = $anonymousId;
+    self::assertSame(403, $this->request($mode, $this->adminRequest())['status']);
   }
 
   /** @dataProvider configurations */
@@ -259,6 +274,9 @@ PHP
     fclose($pipes[2]);
     self::assertSame(0, proc_close($process), $error . $output);
     self::assertSame(1, preg_match('/STATUS:(\d+)/', $error, $matches), $error);
+    if (preg_match('/^SESSION:(\S+)/m', $error, $session)) {
+      $this->sessionId = $session[1];
+    }
     return ['status' => (int) $matches[1], 'json' => json_decode($output, true)];
   }
 

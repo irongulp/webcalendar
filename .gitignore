@@ -62,3 +62,6 @@ includes/config.php.*
 debug.txt
 *.bak
 *.tar.gz
+
+# Local SMTP test script may contain credentials.
+includes/classes/phpmailer/test.php
