@@ -1,4 +1,4 @@
-# WebCalendar agent notes (v1.9.25)
+# WebCalendar agent notes (v1.9.29)
 
 `AGENTS.md` is the canonical project guidance. A root-level `CLAUDE.md` is
 optional, local, and ignored by Git. Keep shared instructions here; a local
@@ -56,9 +56,9 @@ optional, local, and ignored by Git. Keep shared instructions here; a local
   only those four packages; PHP's 8.2 platform floor and composer.json stay intact.
   Both installed and locked Composer audits pass, including dev dependencies.
   Filesystem is dev-only; none of the four packages is in the MCP bundle closure.
-  `make` completed with no generated bundle/assets/manifest diff. Clear/rebuild
-  deployed compiled route caches after installing the new lock file: the routing
-  fix changes the generated matcher. See docs/api.md for deployment commands.
+  `make` completed with no generated bundle/assets/manifest diff. Clear stale
+  compiled route caches after deploying the lock file. The embedded API does
+  not support Laravel's stock `route:cache`; see docs/api.md.
   Six integration cases first reproduced `/api.phpv1/...` and encoded aliases
   reaching an authenticated handler; the patched dependency rejects them with
   404 while preserving valid subdirectory URLs. HEAD auth/abilities and forwarded
@@ -68,6 +68,13 @@ optional, local, and ignored by Git. Keep shared instructions here; a local
   full lint, bundle/release checks, Apache and disposable database checks pass.
 
 ## Verification
+
+- The v1.9.29 upstream merge keeps wizard authorization grounded in configured
+  settings/environment and rotates the wizard session ID on authentication.
+  Browser saves resolve submitted recurrence parents from the stored event and
+  still use the Mobile API deletion mutex. Rebuild TinyMCE 8.10.2 from the lock
+  file rather than merging individual bundled files. The wizard advances the
+  installation version from v1.9.25 without schema SQL.
 
 - Mobile event deletion is a transactional soft delete: it marks the sole
   accepted owner participant as deleted and logs the action. Keep `can_delete`
@@ -181,7 +188,7 @@ Run these from the repository root unless specified otherwise:
   visibility in SQL before paging, including the next-page hint; time-only access
   is denied. SearchPageResource wraps results/cursor and EventResource restricts
   nested fields. Four new runtime files are classified in release-files. Deploy
-  source and rebuild route caches; there is no migration. See docs/api.md.
+  source; there is no migration. See docs/api.md.
 - Search returns one stored repeating-series summary, never unbounded occurrence
   expansion. Its nested event is seed metadata and can_edit is false; the seed
   may itself be excluded. Clients browse actual occurrences through bounded event
@@ -263,8 +270,8 @@ Run these from the repository root unless specified otherwise:
   domain-separated HMAC-SHA256 using the old secret and client rotation entropy.
   Renewal locks the parent and retries transactional conflicts; recognized replay
   commits revocation before returning 401. Keep old access valid until expiry for
-  in-flight readers. MySQL requires InnoDB API tables. Migration plus route-cache
-  rebuild precedes client rollout; legacy sessions need fresh password sign-in.
+  in-flight readers. MySQL requires InnoDB API tables. Run the migration before
+  client rollout; legacy sessions need fresh password sign-in.
   The full PHP 8.2.34/8.3.36/8.4.27/8.5.12 matrix passes 1,231 tests with 5,953
   assertions and one optional external-DB skip each. Full syntax matrix passed;
   changed runtime files were re-linted after the final grant-preservation check.

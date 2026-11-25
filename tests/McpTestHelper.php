@@ -78,6 +78,9 @@ class McpTestHelper {
      * Create a test API token for a user
      */
     public function createApiToken($userLogin, $token) {
+        // Store the SHA-256 hash, exactly as the app does when minting a token
+        // (pref.php). The raw $token is what a client presents; validate_mcp_token
+        // looks it up by hash, so storing plaintext here no longer validates.
         $stmt = $this->db->prepare(
             'UPDATE webcal_user SET cal_api_token = :token WHERE cal_login = :login'
         );

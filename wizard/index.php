@@ -17,12 +17,16 @@ require_once __DIR__ . '/shared/upgrade-sql.php';
 require_once __DIR__ . '/shared/upgrade_matrix.php'; // Load $PROGRAM_VERSION
 
 // Constants
-const PROGRAM_VERSION = 'v1.9.25'; // Fallback will be updated by bump_version.sh
+const PROGRAM_VERSION = 'v1.9.29'; // Fallback will be updated by bump_version.sh
 const WIZARD_NAME = 'WebCalendar Install Wizard';
 
 // Initialize session
 $sessionName = 'WebCalendar-Wizard-' . md5(__DIR__);
 ini_set('session.cookie_lifetime', 3600);
+// Reject client-invented session ids and keep the cookie out of JavaScript,
+// so the id rotated on authentication (below) cannot be fixated in advance.
+ini_set('session.use_strict_mode', '1');
+ini_set('session.cookie_httponly', '1');
 session_name($sessionName);
 session_start();
 
@@ -91,16 +95,12 @@ function handleApiRequest(string $action, WizardState $state, WizardValidator $v
 {
   $response = ['success' => false, 'message' => ''];
 
-  $publicActions = [
-    'validate-field', 'save-install-password', 'login',
-    'welcome-continue', 'welcome-quick-upgrade', 'logout',
-  ];
-  if (!$state->isValidUser && !in_array($action, $publicActions, true)) {
+  if (!$state->apiActionAllowed($action)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Authentication required']);
     return;
   }
-  
+
   switch ($action) {
     case 'validate-field':
       $field = $_POST['field'] ?? '';
@@ -119,9 +119,8 @@ function handleApiRequest(string $action, WizardState $state, WizardValidator $v
       break;
       
     case 'save-install-password':
-      // Existing installations must authenticate through login. This endpoint
-      // creates the first setup password; it is not a password reset mechanism.
-      if ($configuredState->isInitialized || !empty($state->installPassword)) {
+      // Only configuration, not the session draft, can establish a fresh install.
+      if (!$configuredState->canSetInstallPassword() || !empty($state->installPassword)) {
         http_response_code(403);
         $response = ['success' => false, 'message' => 'Initial password setup is unavailable'];
         break;
@@ -132,6 +131,7 @@ function handleApiRequest(string $action, WizardState $state, WizardValidator $v
 
       $result = $validator->validateInstallPassword($password, $confirm);
       if ($result['valid']) {
+        session_regenerate_id(true);
         $state->setInstallPassword($password);
         $state->installPasswordHint = $hint;
         $state->isValidUser = true;
@@ -149,6 +149,7 @@ function handleApiRequest(string $action, WizardState $state, WizardValidator $v
       $password = $_POST['password'] ?? '';
       $result = $validator->validateLoginPassword($password);
       if ($result['valid'] && $state->verifyInstallPassword($password)) {
+        session_regenerate_id(true);
         $state->isValidUser = true;
         $_SESSION['wizard_authenticated_password'] = $state->installPassword;
         $nextStep = routeAfterAuth($state, $validator);
@@ -452,7 +453,12 @@ function handleApiRequest(string $action, WizardState $state, WizardValidator $v
         break;
       }
 
-      $settingsContent = generateSettingsFile($state);
+      try {
+        $settingsContent = generateSettingsFile($state);
+      } catch (InvalidArgumentException $e) {
+        $response = ['success' => false, 'message' => $e->getMessage()];
+        break;
+      }
       $settingsPath = __DIR__ . '/../includes/settings.php';
       
       // Backup existing file if it exists
@@ -646,6 +652,11 @@ function generateSettingsFile(WizardState $state): string
     if (is_bool($value)) {
       $content .= $key . ": " . ($value ? 'true' : 'false') . "\n";
     } else {
+      // Reject values that could break out of the /* ... */ settings block
+      // and inject executable PHP into settings.php.
+      if (!WizardState::isSafeSettingValue($value)) {
+        throw new InvalidArgumentException("Unsafe characters in setting '$key'");
+      }
       $content .= $key . ": " . $value . "\n";
     }
   }

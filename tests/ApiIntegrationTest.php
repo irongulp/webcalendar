@@ -931,14 +931,21 @@ final class ApiIntegrationTest extends TestCase
   public function testBrowserSaveCannotRestoreAnApiDeletedEvent(): void
   {
     $this->event(1, 'Original appointment', 'alice');
+    $this->event(2, 'Separate appointment', 'admin');
     $token = $this->token();
     [$fields, $cookie] = $this->browserEditForm();
+    $fields['parent'] = '2';
+    [$status, $body] = $this->browserRequest('/edit_entry_handler.php', $fields, $cookie);
+    self::assertSame(Response::HTTP_FOUND, $status, strip_tags($body));
+    self::assertSame(0, (int) self::$db->query('SELECT cal_group_id FROM webcal_entry WHERE cal_id = 1')->fetchColumn());
     self::assertSame(Response::HTTP_OK, $this->request('DELETE', '/v1/events/1', [], $token)[0]);
+    $fields['name'] = 'Stale browser title';
     [$status, $body] = $this->browserRequest('/edit_entry_handler.php', $fields, $cookie);
     self::assertSame(Response::HTTP_CONFLICT, $status, strip_tags($body));
     self::assertStringContainsString('This event is no longer available to edit.', $body);
     self::assertSame('D', self::$db->query('SELECT cal_status FROM webcal_entry_user WHERE cal_id = 1')->fetchColumn());
-    self::assertSame('Original appointment', self::$db->query('SELECT cal_name FROM webcal_entry WHERE cal_id = 1')->fetchColumn());
+    self::assertSame('Edited in the browser', self::$db->query('SELECT cal_name FROM webcal_entry WHERE cal_id = 1')->fetchColumn());
+    self::assertSame('Separate appointment', self::$db->query('SELECT cal_name FROM webcal_entry WHERE cal_id = 2')->fetchColumn());
   }
 
   /** @dataProvider browserNotificationOutcomes */
